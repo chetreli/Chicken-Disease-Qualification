@@ -16,4 +16,5 @@ scipy
 Flask
 Flask-Cors
 setuptools
+torchvision
 -e .
