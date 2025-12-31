@@ -17,4 +17,5 @@ Flask
 Flask-Cors
 setuptools
 torchvision
+pytorch_lightning
 -e .
