@@ -58,7 +58,6 @@ class PrepareBaseModel:
         num_features = model.classifier.in_features if isinstance(model.classifier, nn.Sequential) else 25088
         model.classifier = nn.Sequential(
             nn.Linear(num_features, classes),
-            nn.Softmax(dim=1)
         )
 
         model.learning_rate = learning_rate

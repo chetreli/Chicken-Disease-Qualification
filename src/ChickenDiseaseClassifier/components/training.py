@@ -1,9 +1,6 @@
 import os
-import urllib.request as request
-from zipfile import ZipFile
 import torch
 import torch.nn as nn
-import pytorch_lightning as pl
 from pathlib import Path
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
@@ -92,12 +89,14 @@ class Training:
         )
     
         num_epochs = self.config.params_epochs
+        num_classes = 2
 
         for epoch in range(num_epochs):
             self.model.train()
             running_loss = 0.0
-        
-        
+            correct = 0
+            total = 0
+
             for x, y in tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{num_epochs} [TRAIN]"):
                 x, y = x.to(device), y.to(device)
 
@@ -108,31 +107,65 @@ class Training:
                 optimizer.step()
 
                 running_loss += loss.item() * x.size(0)
-        
-            epoch_loss = running_loss / len(self.train_loader.dataset)
-            print(f"Epoch {epoch+1}/{num_epochs} TRAIN loss: {epoch_loss:.4f}")
 
-        
+                preds = outputs.argmax(dim=1)
+                correct += (preds == y).sum().item()
+                total += y.size(0)
+
+            train_loss = running_loss / total
+            train_acc = correct / total
+
+            print(
+                f"Epoch {epoch+1}/{num_epochs} "
+                f"TRAIN loss: {train_loss:.4f}, acc: {train_acc:.4f}"
+            )
+
+            
             self.model.eval()
             val_loss = 0.0
             correct = 0
             total = 0
+
+            
+            tp = torch.zeros(num_classes, device=device)
+            fp = torch.zeros(num_classes, device=device)
+            fn = torch.zeros(num_classes, device=device)
+
             with torch.no_grad():
                 for x, y in self.val_loader:
                     x, y = x.to(device), y.to(device)
+
                     outputs = self.model(x)
                     loss = criterion(outputs, y)
                     val_loss += loss.item() * x.size(0)
 
                     preds = outputs.argmax(dim=1)
+
                     correct += (preds == y).sum().item()
                     total += y.size(0)
-        
-            val_loss /= len(self.val_loader.dataset)
-            val_acc = correct / total
-            print(f"Epoch {epoch+1}/{num_epochs} VAL loss: {val_loss:.4f}, acc: {val_acc:.4f}")
 
-    
+                    for c in range(num_classes):
+                        tp[c] += ((preds == c) & (y == c)).sum()
+                        fp[c] += ((preds == c) & (y != c)).sum()
+                        fn[c] += ((preds != c) & (y == c)).sum()
+
+            val_loss /= total
+            val_acc = correct / total
+
+            precision = (tp / (tp + fp + 1e-8)).mean().item()
+            recall = (tp / (tp + fn + 1e-8)).mean().item()
+            f1 = (2 * precision * recall) / (precision + recall + 1e-8)
+
+            print(
+                f"Epoch {epoch+1}/{num_epochs} "
+                f"VAL loss: {val_loss:.4f}, "
+                f"acc: {val_acc:.4f}, "
+                f"precision: {precision:.4f}, "
+                f"recall: {recall:.4f}, "
+                f"f1: {f1:.4f}"
+            )
+
+        
         path = self.config.trained_model_path
         path.parent.mkdir(parents=True, exist_ok=True)
         torch.save({
@@ -144,4 +177,5 @@ class Training:
                 "num_classes": self.config_model.params_classes
             }
         }, path)
+
         print(f"Model saved at {path}")
